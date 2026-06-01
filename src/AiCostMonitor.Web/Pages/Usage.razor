@@ -1,0 +1,85 @@
+@page "/usage"
+@attribute [Authorize]
+@inject HttpClient Http
+@using AiCostMonitor.Shared.Dtos
+@using MudBlazor
+
+<PageTitle>Usage — AI Cost Monitor</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Usage Records</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudDatePicker Label="From" @bind-Date="_from" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudDatePicker Label="To" @bind-Date="_to" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSelect @bind-Value="_provider" Label="Provider" Variant="Variant.Outlined">
+                <MudSelectItem Value="@((string?)null)">All</MudSelectItem>
+                <MudSelectItem Value="@("anthropic")">Anthropic</MudSelectItem>
+                <MudSelectItem Value="@("openai")">OpenAI</MudSelectItem>
+                <MudSelectItem Value="@("mistral")">Mistral</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="LoadUsage" FullWidth="true">Filter</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudTable Items="_records" Hover="true" Dense="true" Elevation="2"
+              SortLabel="Sort By" Striped="true">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<UsageRecordDto, object>(x=>x.Provider)">Provider</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UsageRecordDto, object>(x=>x.Model)">Model</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UsageRecordDto, object>(x=>x.PeriodStart)">Date</MudTableSortLabel></MudTh>
+            <MudTh>Input Tokens</MudTh>
+            <MudTh>Output Tokens</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UsageRecordDto, object>(x=>x.CostUsd)">Cost (USD)</MudTableSortLabel></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Provider</MudTd>
+            <MudTd>@context.Model</MudTd>
+            <MudTd>@context.PeriodStart.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd>@context.InputTokens.ToString("N0")</MudTd>
+            <MudTd>@context.OutputTokens.ToString("N0")</MudTd>
+            <MudTd>@context.CostUsd.ToString("C4")</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd colspan="5"><strong>Total</strong></MudTd>
+            <MudTd><strong>@_records.Sum(r => r.CostUsd).ToString("C4")</strong></MudTd>
+        </FooterContent>
+    </MudTable>
+}
+
+@code {
+    List<UsageRecordDto> _records = [];
+    bool _loading = false;
+    DateTime? _from = DateTime.Today.AddDays(-30);
+    DateTime? _to = DateTime.Today;
+    string? _provider;
+
+    protected override async Task OnInitializedAsync() => await LoadUsage();
+
+    async Task LoadUsage()
+    {
+        _loading = true;
+        try
+        {
+            var url = $"/api/usage?from={_from:O}&to={_to:O}" +
+                      (_provider is not null ? $"&provider={_provider}" : "");
+            _records = await Http.GetFromJsonAsync<List<UsageRecordDto>>(url) ?? [];
+        }
+        finally { _loading = false; }
+    }
+}

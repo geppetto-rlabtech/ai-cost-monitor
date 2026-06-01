@@ -1,0 +1,46 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: src/AiCostMonitor.Api/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres;Database=aicostmonitor;Username=aicm;Password=${POSTGRES_PASSWORD}
+      - Keycloak__Authority=${KEYCLOAK_AUTHORITY}
+      - Keycloak__ClientId=${KEYCLOAK_CLIENT_ID:-ai-cost-monitor}
+      - Encryption__Key=${ENCRYPTION_KEY}
+      - Cors__AllowedOrigins=${CORS_ORIGINS:-http://localhost:3000}
+      - Sync__IntervalHours=${SYNC_INTERVAL_HOURS:-6}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: src/AiCostMonitor.Web/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aicostmonitor
+      POSTGRES_USER: aicm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicm -d aicostmonitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

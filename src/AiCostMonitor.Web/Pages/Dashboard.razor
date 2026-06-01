@@ -1,0 +1,127 @@
+@page "/"
+@attribute [Authorize]
+@inject HttpClient Http
+@using AiCostMonitor.Shared.Dtos
+@using MudBlazor
+
+<PageTitle>Dashboard — AI Cost Monitor</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_dashboard is null)
+{
+    <MudAlert Severity="Severity.Warning">No data available. Add an API key and trigger a sync.</MudAlert>
+}
+else
+{
+    <!-- Summary cards -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">This Month</MudText>
+                <MudText Typo="Typo.h4">@_dashboard.TotalCostThisMonth.ToString("C2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Last Month</MudText>
+                <MudText Typo="Typo.h4">@_dashboard.TotalCostLastMonth.ToString("C2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">MoM Change</MudText>
+                @{
+                    var delta = _dashboard.TotalCostThisMonth - _dashboard.TotalCostLastMonth;
+                    var color = delta <= 0 ? Color.Success : Color.Error;
+                    var icon = delta <= 0 ? Icons.Material.Filled.TrendingDown : Icons.Material.Filled.TrendingUp;
+                }
+                <MudText Typo="Typo.h4" Color="@color">
+                    <MudIcon Icon="@icon" /> @delta.ToString("+0.00;-0.00;0.00")$
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Active Providers</MudText>
+                <MudText Typo="Typo.h4">@_dashboard.ByProvider.Count()</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- By provider -->
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Cost by Provider (this month)</MudText>
+                <MudTable Items="_dashboard.ByProvider" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>Provider</MudTh>
+                        <MudTh>Cost (USD)</MudTh>
+                        <MudTh>Tokens</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Provider</MudTd>
+                        <MudTd>@context.TotalCostUsd.ToString("C4")</MudTd>
+                        <MudTd>@((context.TotalInputTokens + context.TotalOutputTokens).ToString("N0"))</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Top models -->
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Top Models (this month)</MudText>
+                <MudTable Items="_dashboard.TopModels" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>Model</MudTh>
+                        <MudTh>Cost</MudTh>
+                        <MudTh>Tokens</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd><MudText Typo="Typo.caption">@context.Provider</MudText><br/>@context.Model</MudTd>
+                        <MudTd>@context.CostUsd.ToString("C4")</MudTd>
+                        <MudTd>@context.TotalTokens.ToString("N0")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Daily trend table (sparkline placeholder) -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Daily Spend — Last 30 Days</MudText>
+                <MudTable Items="_dashboard.DailyTrend" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Cost (USD)</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
+                        <MudTd>@context.CostUsd.ToString("C4")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    DashboardDto? _dashboard;
+    bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _dashboard = await Http.GetFromJsonAsync<DashboardDto>("/api/dashboard");
+        }
+        catch { /* show warning */ }
+        finally { _loading = false; }
+    }
+}
