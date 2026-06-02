@@ -30,7 +30,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         opt.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = externalAuthority,
+            ValidIssuers = [externalAuthority, internalAuthority],
             ValidateAudience = true,
             ValidateLifetime = true,
             NameClaimType = "preferred_username",
