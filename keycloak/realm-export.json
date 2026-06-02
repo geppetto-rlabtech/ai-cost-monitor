@@ -668,11 +668,13 @@
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
+        "http://192.168.1.109:3000/*",
         "http://localhost:5173/*",
         "http://localhost/*"
       ],
       "webOrigins": [
         "http://localhost",
+        "http://192.168.1.109:3000",
         "http://localhost:5173"
       ],
       "notBefore": 0,
@@ -686,7 +688,8 @@
       "frontchannelLogout": false,
       "protocol": "openid-connect",
       "attributes": {
-        "post.logout.redirect.uris": "+"
+        "post.logout.redirect.uris": "+",
+        "pkce.code.challenge.method": "S256"
       },
       "authenticationFlowBindingOverrides": {},
       "fullScopeAllowed": true,
