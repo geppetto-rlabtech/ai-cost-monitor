@@ -15,15 +15,22 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
        .UseSnakeCaseNamingConvention());
 
 // ── Authentication (Keycloak) ─────────────────────────────────────
+// Authority/ValidIssuer = public URL (issuer in JWT issued to the browser)
+// MetadataAddress = internal Docker URL (for JWKS fetch — avoids split-horizon DNS issue)
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
-        opt.Authority = builder.Configuration["Keycloak:Authority"];
+        var internalAuthority = builder.Configuration["Keycloak:Authority"]!;
+        var externalAuthority = builder.Configuration["Keycloak:ExternalAuthority"] ?? internalAuthority;
+
+        opt.Authority = externalAuthority;
+        opt.MetadataAddress = internalAuthority + "/.well-known/openid-configuration";
         opt.Audience = builder.Configuration["Keycloak:ClientId"];
         opt.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
         opt.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
+            ValidIssuer = externalAuthority,
             ValidateAudience = true,
             ValidateLifetime = true,
             NameClaimType = "preferred_username",
