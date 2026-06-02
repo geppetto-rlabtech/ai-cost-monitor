@@ -42,14 +42,19 @@ public static class DashboardEndpoints
             .Where(r => r.UserId == userId && r.PeriodStart >= lastMonthStart && r.PeriodStart < thisMonthStart)
             .SumAsync(r => r.CostUsd);
 
-        // Daily trend: last 30 days
+        // Daily trend: last 30 days — GroupBy con DateOnly.FromDateTime non è traducibile in SQL,
+        // carichiamo i record grezzi e raggruppiamo lato client
         var thirtyDaysAgo = now.AddDays(-30);
-        var dailyTrend = await db.UsageRecords
+        var rawDailyRecords = await db.UsageRecords
             .Where(r => r.UserId == userId && r.PeriodStart >= thirtyDaysAgo)
+            .Select(r => new { r.PeriodStart, r.CostUsd })
+            .ToListAsync();
+
+        var dailyTrend = rawDailyRecords
             .GroupBy(r => DateOnly.FromDateTime(r.PeriodStart.DateTime))
             .Select(g => new DailySpendDto(g.Key, g.Sum(r => r.CostUsd)))
             .OrderBy(d => d.Date)
-            .ToListAsync();
+            .ToList();
 
         // Top 5 models this month — GroupBy composite key (translated to SQL)
         var topModels = await db.UsageRecords
