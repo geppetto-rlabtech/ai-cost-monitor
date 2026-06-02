@@ -30,8 +30,8 @@ public static class DashboardEndpoints
                 g.Sum(r => r.InputTokens),
                 g.Sum(r => r.OutputTokens),
                 g.Count()))
-            .OrderByDescending(s => s.TotalCostUsd)
             .ToListAsync();
+         byProvider = byProvider.OrderByDescending(s => s.TotalCostUsd).ToList();
 
         // Totals for this month and last month
         var thisMonthTotal = await db.UsageRecords
@@ -58,10 +58,9 @@ public static class DashboardEndpoints
             .Select(g => new ModelBreakdownDto(
                 g.Key.Provider, g.Key.Model,
                 g.Sum(r => r.CostUsd),
-                g.Sum(r => r.InputTokens + r.OutputTokens)))
-            .OrderByDescending(m => m.CostUsd)
-            .Take(5)
+                 g.Sum(r => r.InputTokens) + g.Sum(r => r.OutputTokens)))
             .ToListAsync();
+         topModels = topModels.OrderByDescending(m => m.CostUsd).Take(5).ToList();
 
         return Results.Ok(new DashboardDto(
             thisMonthTotal,
