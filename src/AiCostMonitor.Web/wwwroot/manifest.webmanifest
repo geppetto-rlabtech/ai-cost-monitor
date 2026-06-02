@@ -1,6 +1,6 @@
 {
-  "name": "AiCostMonitor.Web",
-  "short_name": "AiCostMonitor.Web",
+  "name": "AI Cost Monitor",
+  "short_name": "Cost Monitor",
   "id": "./",
   "start_url": "./",
   "display": "standalone",

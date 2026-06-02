@@ -23,6 +23,10 @@ public class SyncBackgroundService(
                 var sync = scope.ServiceProvider.GetRequiredService<ISyncService>();
                 await sync.SyncAllUsersAsync(ct);
             }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error during background sync");

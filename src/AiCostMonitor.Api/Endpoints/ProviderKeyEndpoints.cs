@@ -1,4 +1,5 @@
 using AiCostMonitor.Api.Data;
+using AiCostMonitor.Api.Extensions;
 using AiCostMonitor.Core.Entities;
 using AiCostMonitor.Core.Interfaces;
 using AiCostMonitor.Shared.Dtos;
@@ -10,6 +11,8 @@ namespace AiCostMonitor.Api.Endpoints;
 
 public static class ProviderKeyEndpoints
 {
+    private static readonly HashSet<string> KnownProviders = ["anthropic", "openai", "mistral"];
+
     public static void MapProviderKeyEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/providers").RequireAuthorization();
@@ -22,7 +25,7 @@ public static class ProviderKeyEndpoints
 
     static async Task<IResult> GetKeys(ClaimsPrincipal user, AppDbContext db)
     {
-        var userId = GetUserId(user);
+        var userId = user.GetUserId();
         var keys = await db.ProviderKeys
             .Where(k => k.UserId == userId)
             .OrderBy(k => k.Provider).ThenBy(k => k.Label)
@@ -30,7 +33,7 @@ public static class ProviderKeyEndpoints
 
         var keyDtos = keys.Select(k => new ProviderKeyDto(
                 k.Id, k.Provider, k.Label,
-                "****" + k.EncryptedApiKey[^4..],
+                "****" + k.KeySuffix,
                 k.IsActive, k.CreatedAt, k.LastSyncedAt))
             .ToList();
         return Results.Ok(keyDtos);
@@ -44,7 +47,11 @@ public static class ProviderKeyEndpoints
         IEncryptionService encryption,
         IEnumerable<IProviderAdapter> adapters)
     {
-        var userId = GetUserId(user);
+        if (!KnownProviders.Contains(provider.ToLowerInvariant()))
+            return Results.BadRequest(new { error = $"Unknown provider '{provider}'" });
+
+        var userId = user.GetUserId();
+        var keySuffix = req.ApiKey.Length >= 4 ? req.ApiKey[^4..] : req.ApiKey;
 
         // Ensure user exists
         if (!await db.Users.AnyAsync(u => u.Id == userId))
@@ -55,6 +62,15 @@ public static class ProviderKeyEndpoints
                 Email = user.FindFirstValue(ClaimTypes.Email) ?? "",
                 DisplayName = user.FindFirstValue("name") ?? ""
             });
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // Another request already created the user — ignore
+                db.ChangeTracker.Clear();
+            }
         }
 
         var encryptedKey = encryption.Encrypt(req.ApiKey);
@@ -65,6 +81,7 @@ public static class ProviderKeyEndpoints
             UserId = userId,
             Provider = provider.ToLowerInvariant(),
             EncryptedApiKey = encryptedKey,
+            KeySuffix = keySuffix,
             Label = req.Label
         };
 
@@ -73,14 +90,17 @@ public static class ProviderKeyEndpoints
 
         return Results.Created($"/api/providers/{provider}/keys/{key.Id}",
             new ProviderKeyDto(key.Id, key.Provider, key.Label,
-                "****" + encryptedKey[^4..], key.IsActive, key.CreatedAt, null));
+                "****" + keySuffix, key.IsActive, key.CreatedAt, null));
     }
 
     static async Task<IResult> DeleteKey(
         string provider, Guid id,
         ClaimsPrincipal user, AppDbContext db)
     {
-        var userId = GetUserId(user);
+        if (!KnownProviders.Contains(provider.ToLowerInvariant()))
+            return Results.BadRequest(new { error = $"Unknown provider '{provider}'" });
+
+        var userId = user.GetUserId();
         var key = await db.ProviderKeys
             .FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId);
 
@@ -97,7 +117,10 @@ public static class ProviderKeyEndpoints
         IEncryptionService encryption,
         IEnumerable<IProviderAdapter> adapters)
     {
-        var userId = GetUserId(user);
+        if (!KnownProviders.Contains(provider.ToLowerInvariant()))
+            return Results.BadRequest(new { error = $"Unknown provider '{provider}'" });
+
+        var userId = user.GetUserId();
         var key = await db.ProviderKeys
             .FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId);
 
@@ -109,13 +132,5 @@ public static class ProviderKeyEndpoints
         var plainKey = encryption.Decrypt(key.EncryptedApiKey);
         var ok = await adapter.TestKeyAsync(plainKey);
         return Results.Ok(new { success = ok });
-    }
-
-    static Guid GetUserId(ClaimsPrincipal user)
-    {
-        var sub = user.FindFirstValue(ClaimTypes.NameIdentifier)
-                  ?? user.FindFirstValue("sub")
-                  ?? throw new UnauthorizedAccessException();
-        return Guid.Parse(sub);
     }
 }

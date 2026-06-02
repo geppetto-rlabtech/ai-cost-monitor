@@ -1,4 +1,5 @@
 using AiCostMonitor.Api.Data;
+using AiCostMonitor.Api.Extensions;
 using AiCostMonitor.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -14,20 +15,14 @@ public static class DashboardEndpoints
 
     static async Task<IResult> GetDashboard(ClaimsPrincipal user, AppDbContext db)
     {
-        var userId = GetUserId(user);
+        var userId = user.GetUserId();
         var now = DateTimeOffset.UtcNow;
         var thisMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
         var lastMonthStart = thisMonthStart.AddMonths(-1);
 
-        var thisMonthRecords = await db.UsageRecords
+        // Aggregate by provider in the DB (this month)
+        var byProvider = await db.UsageRecords
             .Where(r => r.UserId == userId && r.PeriodStart >= thisMonthStart)
-            .ToListAsync();
-
-        var lastMonthRecords = await db.UsageRecords
-            .Where(r => r.UserId == userId && r.PeriodStart >= lastMonthStart && r.PeriodStart < thisMonthStart)
-            .ToListAsync();
-
-        var byProvider = thisMonthRecords
             .GroupBy(r => r.Provider)
             .Select(g => new UsageSummaryDto(
                 g.Key,
@@ -36,7 +31,16 @@ public static class DashboardEndpoints
                 g.Sum(r => r.OutputTokens),
                 g.Count()))
             .OrderByDescending(s => s.TotalCostUsd)
-            .ToList();
+            .ToListAsync();
+
+        // Totals for this month and last month
+        var thisMonthTotal = await db.UsageRecords
+            .Where(r => r.UserId == userId && r.PeriodStart >= thisMonthStart)
+            .SumAsync(r => r.CostUsd);
+
+        var lastMonthTotal = await db.UsageRecords
+            .Where(r => r.UserId == userId && r.PeriodStart >= lastMonthStart && r.PeriodStart < thisMonthStart)
+            .SumAsync(r => r.CostUsd);
 
         // Daily trend: last 30 days
         var thirtyDaysAgo = now.AddDays(-30);
@@ -47,7 +51,9 @@ public static class DashboardEndpoints
             .OrderBy(d => d.Date)
             .ToListAsync();
 
-        var topModels = thisMonthRecords
+        // Top 5 models this month — GroupBy composite key (translated to SQL)
+        var topModels = await db.UsageRecords
+            .Where(r => r.UserId == userId && r.PeriodStart >= thisMonthStart)
             .GroupBy(r => new { r.Provider, r.Model })
             .Select(g => new ModelBreakdownDto(
                 g.Key.Provider, g.Key.Model,
@@ -55,21 +61,13 @@ public static class DashboardEndpoints
                 g.Sum(r => r.InputTokens + r.OutputTokens)))
             .OrderByDescending(m => m.CostUsd)
             .Take(5)
-            .ToList();
+            .ToListAsync();
 
         return Results.Ok(new DashboardDto(
-            thisMonthRecords.Sum(r => r.CostUsd),
-            lastMonthRecords.Sum(r => r.CostUsd),
+            thisMonthTotal,
+            lastMonthTotal,
             byProvider,
             dailyTrend,
             topModels));
-    }
-
-    static Guid GetUserId(ClaimsPrincipal user)
-    {
-        var sub = user.FindFirstValue(ClaimTypes.NameIdentifier)
-                  ?? user.FindFirstValue("sub")
-                  ?? throw new UnauthorizedAccessException();
-        return Guid.Parse(sub);
     }
 }

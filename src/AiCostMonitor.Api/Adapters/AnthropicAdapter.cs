@@ -41,7 +41,7 @@ public class AnthropicAdapter(HttpClient http, ILogger<AnthropicAdapter> logger)
                       $"?start_time={from:yyyy-MM-ddTHH:mm:ssZ}" +
                       $"&end_time={to:yyyy-MM-ddTHH:mm:ssZ}" +
                       $"&time_granularity=day&limit=100" +
-                      (cursor is not null ? $"&page={cursor}" : "");
+                      (cursor is not null ? $"&after_id={cursor}" : "");
 
             var req = BuildRequest(HttpMethod.Get, url, apiKey);
             var resp = await http.SendAsync(req, ct);

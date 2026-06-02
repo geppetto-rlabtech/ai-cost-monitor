@@ -19,34 +19,30 @@ public class EncryptionService : IEncryptionService
 
     public string Encrypt(string plainText)
     {
-        using var aes = Aes.Create();
-        aes.Key = _key;
-        aes.GenerateIV();
-
-        using var encryptor = aes.CreateEncryptor();
         var plainBytes = Encoding.UTF8.GetBytes(plainText);
-        var cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
-
-        // Format: base64(IV + ciphertext)
-        var result = new byte[aes.IV.Length + cipherBytes.Length];
-        aes.IV.CopyTo(result, 0);
-        cipherBytes.CopyTo(result, aes.IV.Length);
-        return Convert.ToBase64String(result);
+        var nonce = new byte[AesGcm.NonceByteSizes.MaxSize]; // 12 bytes
+        RandomNumberGenerator.Fill(nonce);
+        var tag = new byte[AesGcm.TagByteSizes.MaxSize]; // 16 bytes
+        var cipherText = new byte[plainBytes.Length];
+        using var aesGcm = new AesGcm(_key, AesGcm.TagByteSizes.MaxSize);
+        aesGcm.Encrypt(nonce, plainBytes, cipherText, tag);
+        // Format: nonce(12) | tag(16) | ciphertext
+        var combined = new byte[nonce.Length + tag.Length + cipherText.Length];
+        nonce.CopyTo(combined, 0);
+        tag.CopyTo(combined, nonce.Length);
+        cipherText.CopyTo(combined, nonce.Length + tag.Length);
+        return Convert.ToBase64String(combined);
     }
 
-    public string Decrypt(string cipherText)
+    public string Decrypt(string cipherTextBase64)
     {
-        var data = Convert.FromBase64String(cipherText);
-
-        using var aes = Aes.Create();
-        aes.Key = _key;
-
-        var iv = data[..16];
-        var cipher = data[16..];
-        aes.IV = iv;
-
-        using var decryptor = aes.CreateDecryptor();
-        var plainBytes = decryptor.TransformFinalBlock(cipher, 0, cipher.Length);
+        var combined = Convert.FromBase64String(cipherTextBase64);
+        var nonce = combined[..12];
+        var tag = combined[12..28];
+        var cipherText = combined[28..];
+        var plainBytes = new byte[cipherText.Length];
+        using var aesGcm = new AesGcm(_key, AesGcm.TagByteSizes.MaxSize);
+        aesGcm.Decrypt(nonce, cipherText, tag, plainBytes);
         return Encoding.UTF8.GetString(plainBytes);
     }
 }

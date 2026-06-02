@@ -48,7 +48,8 @@ builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 
 // Provider Adapters
-builder.Services.AddHttpClient<AnthropicAdapter>();
+builder.Services.AddHttpClient<AnthropicAdapter>(c =>
+    c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<IProviderAdapter, AnthropicAdapter>();
 
 var app = builder.Build();
@@ -57,7 +58,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
+    if (app.Environment.IsDevelopment())
+        await db.Database.MigrateAsync();
 }
 
 // ── Middleware ────────────────────────────────────────────────────

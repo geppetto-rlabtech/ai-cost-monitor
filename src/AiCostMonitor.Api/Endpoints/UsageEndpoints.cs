@@ -1,4 +1,5 @@
 using AiCostMonitor.Api.Data;
+using AiCostMonitor.Api.Extensions;
 using AiCostMonitor.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -20,7 +21,7 @@ public static class UsageEndpoints
         ClaimsPrincipal user, AppDbContext db,
         DateTimeOffset? from, DateTimeOffset? to, string? provider)
     {
-        var userId = GetUserId(user);
+        var userId = user.GetUserId();
         var fromDate = from ?? DateTimeOffset.UtcNow.AddDays(-30);
         var toDate = to ?? DateTimeOffset.UtcNow;
 
@@ -49,7 +50,7 @@ public static class UsageEndpoints
         ClaimsPrincipal user, AppDbContext db,
         DateTimeOffset? from, DateTimeOffset? to)
     {
-        var userId = GetUserId(user);
+        var userId = user.GetUserId();
         var fromDate = from ?? DateTimeOffset.UtcNow.AddDays(-30);
         var toDate = to ?? DateTimeOffset.UtcNow;
 
@@ -72,7 +73,7 @@ public static class UsageEndpoints
     static async Task<IResult> GetSummary(
         ClaimsPrincipal user, AppDbContext db)
     {
-        var userId = GetUserId(user);
+        var userId = user.GetUserId();
         var now = DateTimeOffset.UtcNow;
         var thisMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -89,13 +90,5 @@ public static class UsageEndpoints
             .ToListAsync();
 
         return Results.Ok(summary);
-    }
-
-    static Guid GetUserId(ClaimsPrincipal user)
-    {
-        var sub = user.FindFirstValue(ClaimTypes.NameIdentifier)
-                  ?? user.FindFirstValue("sub")
-                  ?? throw new UnauthorizedAccessException();
-        return Guid.Parse(sub);
     }
 }

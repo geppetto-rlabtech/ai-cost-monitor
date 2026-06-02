@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @using AiCostMonitor.Shared.Dtos
 @using MudBlazor
 
@@ -112,6 +113,12 @@ else
 
     async Task DeleteKey(Guid id, string provider)
     {
+        bool? result = await DialogService.ShowMessageBox(
+            "Conferma eliminazione",
+            "Eliminare questa chiave API? L'operazione non è reversibile.",
+            yesText: "Elimina", cancelText: "Annulla");
+        if (result != true) return;
+
         var resp = await Http.DeleteAsync($"/api/providers/{provider}/keys/{id}");
         if (resp.IsSuccessStatusCode) { Snackbar.Add("Key removed", Severity.Success); await LoadKeys(); }
         else Snackbar.Add("Failed to remove key", Severity.Error);

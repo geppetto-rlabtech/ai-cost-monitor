@@ -56,27 +56,20 @@ public class SyncService(
             var plainKey = encryption.Decrypt(key.EncryptedApiKey);
             var records = (await adapter.FetchUsageAsync(plainKey, from, to, ct)).ToList();
 
+            // Build a lookup map to avoid N+1 AnyAsync/FirstAsync calls
+            var existingMap = await db.UsageRecords
+                .Where(r => r.ProviderKeyId == key.Id)
+                .ToDictionaryAsync(r => (r.Model, r.PeriodStart), ct);
+
             // Upsert: skip records we already have for same key/model/period
             foreach (var record in records)
             {
                 record.UserId = key.UserId;
                 record.ProviderKeyId = key.Id;
 
-                var exists = await db.UsageRecords.AnyAsync(r =>
-                    r.ProviderKeyId == key.Id &&
-                    r.Model == record.Model &&
-                    r.PeriodStart == record.PeriodStart, ct);
-
-                if (!exists)
-                    db.UsageRecords.Add(record);
-                else
+                if (existingMap.TryGetValue((record.Model, record.PeriodStart), out var existing))
                 {
                     // Update the existing record (cost may have changed)
-                    var existing = await db.UsageRecords.FirstAsync(r =>
-                        r.ProviderKeyId == key.Id &&
-                        r.Model == record.Model &&
-                        r.PeriodStart == record.PeriodStart, ct);
-
                     existing.InputTokens = record.InputTokens;
                     existing.OutputTokens = record.OutputTokens;
                     existing.CacheReadTokens = record.CacheReadTokens;
@@ -84,10 +77,22 @@ public class SyncService(
                     existing.CostUsd = record.CostUsd;
                     existing.SyncedAt = record.SyncedAt;
                 }
+                else
+                {
+                    db.UsageRecords.Add(record);
+                }
             }
 
             key.LastSyncedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex)
+            {
+                logger.LogWarning(ex, "Upsert conflict on key {KeyId}, skipping duplicates", key.Id);
+            }
 
             logger.LogInformation("Synced {Count} records for key {KeyId}", records.Count, key.Id);
         }

@@ -1,6 +1,7 @@
 @page "/usage"
 @attribute [Authorize]
 @inject HttpClient Http
+@inject ISnackbar Snackbar
 @using AiCostMonitor.Shared.Dtos
 @using MudBlazor
 
@@ -78,7 +79,15 @@ else
         {
             var url = $"/api/usage?from={_from:O}&to={_to:O}" +
                       (_provider is not null ? $"&provider={_provider}" : "");
-            _records = await Http.GetFromJsonAsync<List<UsageRecordDto>>(url) ?? [];
+            try
+            {
+                _records = await Http.GetFromJsonAsync<List<UsageRecordDto>>(url) ?? [];
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Errore nel caricamento dei dati: {ex.Message}", Severity.Error);
+                _records = [];
+            }
         }
         finally { _loading = false; }
     }

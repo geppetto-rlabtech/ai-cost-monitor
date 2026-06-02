@@ -34,6 +34,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(r => new { r.Provider, r.Model });
             // Prevent duplicate records for the same key/model/period
             e.HasIndex(r => new { r.ProviderKeyId, r.Model, r.PeriodStart }).IsUnique();
+            e.Property(r => r.CostUsd).HasColumnType("numeric(18, 8)");
         });
     }
 }
