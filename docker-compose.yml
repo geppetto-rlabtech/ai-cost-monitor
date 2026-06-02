@@ -5,6 +5,9 @@ services:
     environment:
       KEYCLOAK_ADMIN: ${KC_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
+      KC_HOSTNAME: ${KC_EXTERNAL_URL:-http://192.168.1.109:8080}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json:ro
     ports:

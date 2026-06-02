@@ -15,21 +15,21 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
        .UseSnakeCaseNamingConvention());
 
 // ── Authentication (Keycloak) ─────────────────────────────────────
-// Authority = internal Docker URL → metadata fetch + issuer check della discovery sono consistenti
-// ValidIssuers include anche l'URL esterno (quello nel JWT emesso al browser)
+// KC_HOSTNAME in Keycloak è impostato all'URL esterno, quindi l'issuer nei token
+// corrisponde sempre all'URL pubblico — Authority e ValidIssuer sono allineati.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
         var internalAuthority = builder.Configuration["Keycloak:Authority"]!;
         var externalAuthority = builder.Configuration["Keycloak:ExternalAuthority"] ?? internalAuthority;
 
-        opt.Authority = internalAuthority;            // fetch metadata da Docker interno
+        opt.Authority = internalAuthority;      // fetch JWKS via Docker network
         opt.Audience = builder.Configuration["Keycloak:ClientId"];
         opt.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
         opt.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuers = [externalAuthority, internalAuthority],  // accetta token sia dal browser che da localhost
+            ValidIssuers = [externalAuthority, internalAuthority],
             ValidateAudience = true,
             ValidateLifetime = true,
             NameClaimType = "preferred_username",
