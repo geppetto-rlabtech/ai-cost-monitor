@@ -1,0 +1,132 @@
+@page "/providers"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using AiCostMonitor.Shared.Dtos
+@using MudBlazor
+
+<PageTitle>API Keys — AI Cost Monitor</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">API Keys</MudText>
+
+<!-- Add key form -->
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudText Typo="Typo.h6" Class="mb-3">Add Provider Key</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudSelect @bind-Value="_newProvider" Label="Provider" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("anthropic")">Anthropic</MudSelectItem>
+                <MudSelectItem Value="@("openai")">OpenAI</MudSelectItem>
+                <MudSelectItem Value="@("mistral")">Mistral</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_newLabel" Label="Label" Variant="Variant.Outlined"
+                          Placeholder="e.g. Production key" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_newApiKey" Label="API Key" Variant="Variant.Outlined"
+                          InputType="InputType.Password" Placeholder="sk-ant-admin-..." />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="AddKey" Disabled="_saving" FullWidth="true">
+                @if (_saving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+                else { <span>Add Key</span> }
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<!-- Keys list -->
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (!_keys.Any())
+{
+    <MudAlert Severity="Severity.Info">No API keys configured yet.</MudAlert>
+}
+else
+{
+    <MudTable Items="_keys" Hover="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>Provider</MudTh>
+            <MudTh>Label</MudTh>
+            <MudTh>Key</MudTh>
+            <MudTh>Last Sync</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Provider</MudTd>
+            <MudTd>@context.Label</MudTd>
+            <MudTd><code>@context.MaskedKey</code></MudTd>
+            <MudTd>@(context.LastSyncedAt?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Sync" Size="Size.Small"
+                               Title="Sync now" OnClick="@(() => SyncKey(context.Provider))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                               Color="Color.Error" Title="Delete"
+                               OnClick="@(() => DeleteKey(context.Id, context.Provider))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    List<ProviderKeyDto> _keys = [];
+    bool _loading = true;
+    bool _saving = false;
+    string _newProvider = "anthropic";
+    string _newLabel = "";
+    string _newApiKey = "";
+
+    protected override async Task OnInitializedAsync() => await LoadKeys();
+
+    async Task LoadKeys()
+    {
+        _loading = true;
+        try { _keys = await Http.GetFromJsonAsync<List<ProviderKeyDto>>("/api/providers") ?? []; }
+        catch { Snackbar.Add("Failed to load keys", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    async Task AddKey()
+    {
+        if (string.IsNullOrWhiteSpace(_newApiKey) || string.IsNullOrWhiteSpace(_newLabel)) return;
+        _saving = true;
+        try
+        {
+            var req = new AddProviderKeyRequest(_newProvider, _newApiKey, _newLabel);
+            var resp = await Http.PostAsJsonAsync($"/api/providers/{_newProvider}/keys", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Key added successfully", Severity.Success);
+                _newApiKey = ""; _newLabel = "";
+                await LoadKeys();
+            }
+            else Snackbar.Add("Failed to add key", Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    async Task DeleteKey(Guid id, string provider)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            "Conferma eliminazione",
+            "Eliminare questa chiave API? L'operazione non è reversibile.",
+            yesText: "Elimina", cancelText: "Annulla");
+        if (result != true) return;
+
+        var resp = await Http.DeleteAsync($"/api/providers/{provider}/keys/{id}");
+        if (resp.IsSuccessStatusCode) { Snackbar.Add("Key removed", Severity.Success); await LoadKeys(); }
+        else Snackbar.Add("Failed to remove key", Severity.Error);
+    }
+
+    async Task SyncKey(string provider)
+    {
+        await Http.PostAsync($"/api/sync/{provider}", null);
+        Snackbar.Add($"Sync started for {provider}", Severity.Info);
+    }
+}

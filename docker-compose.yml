@@ -1,0 +1,82 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: ${KC_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
+      KC_HOSTNAME: ${KC_EXTERNAL_URL:-192.168.1.109}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8080 2>/dev/null && echo OK'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - app-network
+
+  api:
+    build:
+      context: .
+      dockerfile: src/AiCostMonitor.Api/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres;Database=aicostmonitor;Username=aicm;Password=${POSTGRES_PASSWORD}
+      - Keycloak__Authority=${KEYCLOAK_AUTHORITY}
+      - Keycloak__ExternalAuthority=${KEYCLOAK_EXTERNAL_AUTHORITY}
+      - Keycloak__ClientId=${KEYCLOAK_CLIENT_ID:-ai-cost-monitor}
+      - Encryption__Key=${ENCRYPTION_KEY}
+      - Cors__AllowedOrigins=${CORS_ORIGINS:-http://localhost:3000}
+      - Sync__IntervalHours=${SYNC_INTERVAL_HOURS:-6}
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  web:
+    build:
+      context: .
+      dockerfile: src/AiCostMonitor.Web/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aicostmonitor
+      POSTGRES_USER: aicm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicm -d aicostmonitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge
